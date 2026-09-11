@@ -133,6 +133,84 @@ test("WorkspaceIndex: ensureIncludeChainParsed is cycle-safe and doesn't touch u
   assert.equal(idx.getFile(path.join(dir, "unrelated.asp")), undefined);
 });
 
+test("ensureIncludeChainParsed: pulls in a file's whole include chain, and nothing else", () => {
+  const dir = makeTempDir();
+  const common = write(dir, "common.asp", `Function Helper()\nEnd Function`);
+  const index_ = write(dir, "index.asp", `<!-- #include file="common.asp" -->\nFunction Main()\nEnd Function`);
+  // Never opened, never included by anything opened — should stay out of the index.
+  write(dir, "unrelated.asp", `Function NeverTouched()\nEnd Function`);
+
+  const idx = new WorkspaceIndex();
+  idx.ensureIncludeChainParsed(index_);
+
+  assert.equal(idx.size, 2, "only index.asp and its one include should be parsed");
+  assert.ok(idx.getFile(index_));
+  assert.ok(idx.getFile(common));
+  assert.equal(idx.findDefinitionsWorkspaceWide("nevertouched").length, 0);
+});
+
+test("ensureIncludeChainParsed: cycle-safe, doesn't loop forever on A -> B -> A", () => {
+  const dir = makeTempDir();
+  const a = write(dir, "a.asp", `<!-- #include file="b.asp" -->\nFunction FromA()\nEnd Function`);
+  const b = write(dir, "b.asp", `<!-- #include file="a.asp" -->\nFunction FromB()\nEnd Function`);
+
+  const idx = new WorkspaceIndex();
+  idx.ensureIncludeChainParsed(a);
+
+  assert.equal(idx.size, 2);
+  assert.ok(idx.getFile(a));
+  assert.ok(idx.getFile(b));
+});
+
+test("ensureIncludeChainParsed: an unresolved virtual= include doesn't stop the rest of the chain", () => {
+  const dir = makeTempDir();
+  const common = write(dir, "common.asp", `Function Helper()\nEnd Function`);
+  const index_ = write(
+    dir,
+    "index.asp",
+    [
+      `<!-- #include file="common.asp" -->`,
+      `<!-- #include virtual="/shared/db.asp" -->`,
+      `Function Main()`,
+      `End Function`,
+    ].join("\n"),
+  );
+
+  const idx = new WorkspaceIndex();
+  idx.ensureIncludeChainParsed(index_);
+
+  assert.equal(idx.size, 2, "virtual= has no resolvedPath, so it's skipped rather than chased or aborting");
+  assert.ok(idx.getFile(common));
+});
+
+test("ensureIncludeChainParsed: is a no-op re-read when nothing on disk changed", () => {
+  const dir = makeTempDir();
+  const a = write(dir, "a.asp", `Function Foo()\nEnd Function`);
+
+  const idx = new WorkspaceIndex();
+  idx.ensureIncludeChainParsed(a);
+  const firstParsedAt = idx.getFile(a)!.lastParsed;
+
+  idx.ensureIncludeChainParsed(a);
+  assert.equal(idx.getFile(a)!.lastParsed, firstParsedAt, "needsReparse should have skipped an unchanged file");
+});
+
+test("ensureIncludeChainParsed: picks up an edit made between two calls", () => {
+  const dir = makeTempDir();
+  const a = write(dir, "a.asp", `Function Foo()\nEnd Function`);
+
+  const idx = new WorkspaceIndex();
+  idx.ensureIncludeChainParsed(a);
+  assert.equal(idx.getFile(a)!.definitions[0].name, "Foo");
+
+  const future = new Date(Date.now() + 5000);
+  fs.writeFileSync(a, `Function Bar()\nEnd Function`, "utf8");
+  fs.utimesSync(a, future, future);
+
+  idx.ensureIncludeChainParsed(a);
+  assert.equal(idx.getFile(a)!.definitions[0].name, "Bar");
+});
+
 test("WorkspaceIndex: case-insensitive path key means Windows-style casing differences collide", () => {
   const dir = makeTempDir();
   const f = write(dir, "MixedCase.asp", `Function X()\nEnd Function`);
