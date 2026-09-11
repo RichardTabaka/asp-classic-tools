@@ -1,0 +1,85 @@
+{
+  "name": "asp-classic-tools",
+  "displayName": "ASP Classic Tools",
+  "description": "Go-to-definition and include tree for ASP Classic (VBScript) projects.",
+  "version": "0.0.1",
+  "publisher": "local",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Other"
+  ],
+  "activationEvents": [
+    "onLanguage:asp"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "asp",
+        "extensions": [
+          ".asp"
+        ],
+        "aliases": [
+          "ASP Classic",
+          "asp"
+        ]
+      }
+    ],
+    "views": {
+      "explorer": [
+        {
+          "id": "aspIncludeTree",
+          "name": "ASP Include Tree",
+          "when": "resourceLangId == asp"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "asp-classic-tools.refreshIndex",
+        "title": "ASP Classic: Rebuild Index",
+        "icon": "$(refresh)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "asp-classic-tools.refreshIndex",
+          "when": "view == aspIncludeTree",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "ASP Classic Tools",
+      "properties": {
+        "aspClassicTools.workspaceFallback": {
+          "type": "boolean",
+          "default": true,
+          "description": "When Go to Definition finds nothing in the current file or its include graph, fall back to searching the whole workspace."
+        },
+        "aspClassicTools.webRoot": {
+          "type": "string",
+          "default": "",
+          "default_description": "",
+          "description": "Filesystem path that virtual=\"...\" includes resolve against. Leave empty to keep virtual includes unresolved."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -w -p ./",
+    "test": "node --import tsx --test src/test/*.test.ts",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0"
+  }
+}
