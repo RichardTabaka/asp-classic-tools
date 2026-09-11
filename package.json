@@ -56,10 +56,15 @@
     "configuration": {
       "title": "ASP Classic Tools",
       "properties": {
+        "aspClassicTools.eagerIndex": {
+          "type": "boolean",
+          "default": false,
+          "description": "Scan and parse every .asp file in the workspace on startup. Off by default: files are parsed on demand as you open or save them (plus whatever they include), so large workspaces on a slow or remote drive start instantly. Turn on for full workspace coverage from the start if your workspace is small enough to scan quickly."
+        },
         "aspClassicTools.workspaceFallback": {
           "type": "boolean",
           "default": true,
-          "description": "When Go to Definition finds nothing in the current file or its include graph, fall back to searching the whole workspace."
+          "description": "When Go to Definition finds nothing in the current file or its include graph, fall back to searching every file currently indexed. With eagerIndex off, that's whatever's been opened/saved so far, not necessarily the whole workspace."
         },
         "aspClassicTools.webRoot": {
           "type": "string",

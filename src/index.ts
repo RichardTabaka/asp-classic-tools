@@ -18,6 +18,14 @@ export interface ResolvedInclude {
   line: number;
   /** Normalized, lowercased absolute path, or null if unresolved (e.g. virtual=). */
   resolvedPath: string | null;
+  /**
+   * Same target, original casing, alongside resolvedPath. On-demand indexing
+   * (see ensureIncludeChainParsed) needs this to read a file from disk the
+   * first time it's reached only via an include rather than opened directly —
+   * the lowercased key alone isn't a safe filesystem path on case-sensitive
+   * filesystems.
+   */
+  resolvedDisplayPath: string | null;
 }
 
 export interface FileNode {
@@ -51,7 +59,7 @@ export function resolveInclude(
 ): ResolvedInclude {
   if (ref.kind === "file") {
     const resolved = path.resolve(path.dirname(currentFilePath), ref.targetString);
-    return { ...ref, resolvedPath: normalizeKey(resolved) };
+    return { ...ref, resolvedPath: normalizeKey(resolved), resolvedDisplayPath: resolved };
   }
 
   // virtual=
@@ -59,10 +67,10 @@ export function resolveInclude(
     // Virtual paths are site-root-relative; strip a leading slash before joining.
     const relative = ref.targetString.replace(/^[/\\]+/, "");
     const resolved = path.resolve(webRoot, relative);
-    return { ...ref, resolvedPath: normalizeKey(resolved) };
+    return { ...ref, resolvedPath: normalizeKey(resolved), resolvedDisplayPath: resolved };
   }
 
-  return { ...ref, resolvedPath: null };
+  return { ...ref, resolvedPath: null, resolvedDisplayPath: null };
 }
 
 export interface WorkspaceIndexOptions {
@@ -129,6 +137,45 @@ export class WorkspaceIndex {
     } catch {
       // File is gone; caller should remove it instead of reparsing.
       return false;
+    }
+  }
+
+  /**
+   * Ensures `filePath` and everything it transitively includes are parsed
+   * and cached, without touching any file outside that chain. This is what
+   * makes on-demand indexing (no upfront workspace scan) still work: opening
+   * or saving a page pulls its whole include tree into the index, not just
+   * the one file, so F12 inside it has something to search.
+   */
+  ensureIncludeChainParsed(filePath: string): void {
+    const visited = new Set<string>();
+    const queue: string[] = [filePath];
+
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      const key = normalizeKey(current);
+      if (visited.has(key)) {
+        continue;
+      }
+      visited.add(key);
+
+      if (this.needsReparse(current)) {
+        try {
+          this.reparseFromDisk(current);
+        } catch {
+          continue; // unreadable/gone; nothing to chain into
+        }
+      }
+
+      const node = this.files.get(key);
+      if (!node) {
+        continue;
+      }
+      for (const inc of node.includes) {
+        if (inc.resolvedPath && inc.resolvedDisplayPath && !visited.has(inc.resolvedPath)) {
+          queue.push(inc.resolvedDisplayPath);
+        }
+      }
     }
   }
 

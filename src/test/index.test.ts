@@ -99,6 +99,40 @@ test("WorkspaceIndex: findDefinitionsWorkspaceWide finds matches regardless of i
   assert.equal(results[0].file.displayPath, a);
 });
 
+test("WorkspaceIndex: ensureIncludeChainParsed pulls in transitively included files never parsed directly", () => {
+  const dir = makeTempDir();
+  const lib = write(dir, "lib.asp", `Function FromLib()\nEnd Function`);
+  write(dir, "common.asp", `<!-- #include file="lib.asp" -->\nFunction FromCommon()\nEnd Function`);
+  const page = write(dir, "page.asp", `<!-- #include file="common.asp" -->\nFunction FromPage()\nEnd Function`);
+
+  const idx = new WorkspaceIndex();
+  assert.equal(idx.size, 0);
+
+  idx.ensureIncludeChainParsed(page);
+
+  // page.asp, common.asp, and lib.asp all get parsed even though only
+  // page.asp was ever "opened" directly.
+  assert.equal(idx.size, 3);
+  assert.ok(idx.getFile(lib), "lib.asp reached only via a transitive include should be cached");
+
+  const results = idx.findDefinitionsViaIncludes(page, "fromlib");
+  assert.equal(results.length, 1);
+  assert.equal(results[0].def.name, "FromLib");
+});
+
+test("WorkspaceIndex: ensureIncludeChainParsed is cycle-safe and doesn't touch unrelated files", () => {
+  const dir = makeTempDir();
+  write(dir, "b.asp", `<!-- #include file="a.asp" -->\nFunction FromB()\nEnd Function`);
+  const a = write(dir, "a.asp", `<!-- #include file="b.asp" -->\nFunction FromA()\nEnd Function`);
+  write(dir, "unrelated.asp", `Function ShouldNotBeIndexed()\nEnd Function`);
+
+  const idx = new WorkspaceIndex();
+  idx.ensureIncludeChainParsed(a);
+
+  assert.equal(idx.size, 2);
+  assert.equal(idx.getFile(path.join(dir, "unrelated.asp")), undefined);
+});
+
 test("WorkspaceIndex: case-insensitive path key means Windows-style casing differences collide", () => {
   const dir = makeTempDir();
   const f = write(dir, "MixedCase.asp", `Function X()\nEnd Function`);

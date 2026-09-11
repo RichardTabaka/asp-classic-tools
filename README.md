@@ -72,10 +72,38 @@ Extension Development Host — worth doing as your first step.
 
 ## Configuration
 
+- `aspClassicTools.eagerIndex` (default `false`) — scan and parse every `.asp` file in
+  the workspace on startup. Off by default: the index starts empty and is built
+  on demand as you open/save files (see "Indexing modes" below), so large workspaces on
+  a slow or remote drive start instantly. Turn on for full workspace coverage from the
+  start if your workspace is small enough to scan quickly.
 - `aspClassicTools.workspaceFallback` (default `true`) — when F12 finds nothing via the
-  include graph, fall back to searching every indexed file.
+  include graph, fall back to searching every indexed file. With `eagerIndex` off,
+  "every indexed file" is whatever's been opened/saved so far, not the whole workspace.
 - `aspClassicTools.webRoot` — filesystem path that `virtual="..."` includes resolve
   against. Empty (default) leaves them unresolved, per the v1 plan.
+
+## Indexing modes
+
+By default (`eagerIndex: false`) nothing is scanned at startup. Opening or saving an
+`.asp` file parses that file *and* walks its resolved include chain (recursively,
+cycle-safe via `WorkspaceIndex.ensureIncludeChainParsed`), pulling everything it includes
+into the cache too — so F12 works fully within whatever you're actually working on,
+without ever touching unrelated files elsewhere in the workspace.
+
+F12 resolution order:
+
+1. Definitions in the current file.
+2. Definitions reachable via the current file's cached include graph.
+3. If neither finds it and `workspaceFallback` is on: every file currently in the index
+   (not a claim they're reachable from here — just candidates). VS Code shows a picker
+   when there's more than one match, jumps straight there when there's exactly one.
+4. If that's empty too: an info message, since in on-demand mode a miss may just mean
+   the defining file hasn't been opened/saved yet — the message suggests opening the
+   higher-level parent (or any file that includes the target) to pull it into the index.
+
+Turn `eagerIndex` on to go back to the old behavior: a full workspace scan at startup and
+on every `webRoot` change, and a real workspace-wide fallback in step 3 above.
 
 ## Known v1 limitations (by design, see the plan doc)
 
